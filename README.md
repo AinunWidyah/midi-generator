@@ -12,12 +12,12 @@ File MIDI → Tokenizer → String token → ID angka → Transformer → Token 
 
 ## Anggota & Pembagian Tugas
 
-| Peran | Nama | Modul |
-|---|---|---|
-| 1. Prompt Engineer & LLM Navigator (Ketua) | _isi nama_ | `src/model.py`, integrasi |
-| 2. Data Pipeline & Preprocessing Engineer | _isi nama_ | `src/tokenizer.py`, `src/dataset.py` |
-| 3. Training Loop & Hyperparameter Tuning Engineer | _isi nama_ | `src/train.py`, `src/generate.py` |
-| 4. Lead Documentarian & Error Handler | _isi nama_ | `logs/`, laporan akhir |
+| Peran | Nama | NIM | Modul |
+|---|---|---|---|
+| 1. Prompt Engineer & LLM Navigator (Ketua) | _isi nama_ | NIM | `src/model.py`, integrasi |
+| 2. Data Pipeline & Preprocessing Engineer | _isi nama_ | NIM | `src/tokenizer.py`, `src/dataset.py` |
+| 3. Training Loop & Hyperparameter Tuning Engineer | _isi nama_ | NIM | `src/train.py`, `src/generate.py` |
+| 4. Lead Documentarian & Error Handler | _isi nama_ | NIM | `logs/`, laporan akhir |
 
 ## Struktur Folder
 
