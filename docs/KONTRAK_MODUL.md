@@ -128,7 +128,7 @@ Token yang tidak valid saat `decode` (misal dua `DUR` berturut-turut) dilewati, 
 - Attention memakai **causal mask** (token tidak boleh melihat token setelahnya).
 
 ### `src/train.py` — Anggota 3
-- Loss: `cross_entropy(logits.view(-1, V), y.view(-1), ignore_index=PAD_ID)`, dengan opsi `label_smoothing`.
+- Loss: `cross_entropy(logits.reshape(-1, V), y.reshape(-1), ignore_index=PAD_ID)`, dengan opsi `label_smoothing`. Gunakan `.reshape`, **bukan** `.view`, karena `y` hasil slicing (`data[:, 1:]`) tidak contiguous di memori (lihat log 03, Eror 2.1).
 - Dicatat per epoch: `train_loss`, `val_loss`, `val_perplexity = exp(val_loss)`, `val_accuracy` (tanpa PAD).
 - Riwayat metrik disimpan ke `outputs/metrics.csv`; grafik ke `outputs/loss_curve.png`.
 - Format checkpoint (`outputs/checkpoints/*.pt`):
