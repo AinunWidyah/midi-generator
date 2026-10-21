@@ -8,6 +8,8 @@ venv/
 
 # Data & model besar (jangan di-commit)
 data/*
+!data/raw/
+!data/excluded_non_monophonic/
 !data/.gitkeep
 *.pt
 *.pth
