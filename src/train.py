@@ -12,19 +12,17 @@ from pathlib import Path
  
 import matplotlib
  
-matplotlib.use("Agg")  # tanpa layar, aman untuk Colab/Kaggle/server
+matplotlib.use("Agg")  
 import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
  
-# ---- ANTARMUKA KE MODUL ANGGOTA LAIN (SESUAIKAN BILA PERLU) -----------------
 from src import tokenizer
 from src.dataset import MidiDataset
 from src.model import MiniGPT, ModelConfig
 from src.tokenizer import PAD_ID, VOCAB_SIZE, tokens_to_ids
-# -----------------------------------------------------------------------------
  
  
 @dataclass
@@ -160,12 +158,12 @@ def build_dataloaders(cfg: TrainConfig, smoke: bool, vocab_size: int):
                 f"Butuh minimal 2 file MIDI di '{cfg.data_dir}', ditemukan {len(paths)}."
             )
         random.Random(cfg.seed).shuffle(paths)
-        # Split per FILE (bukan per jendela) agar tidak ada kebocoran data ke validasi.
+        # Split per FILE agar tidak ada kebocoran data ke validasi.
         n_val = max(1, int(len(paths) * cfg.val_ratio))
         val_seqs = load_sequences(paths[:n_val])
         train_seqs = load_sequences(paths[n_val:])
         print(f"File MIDI: {len(paths) - n_val} train, {n_val} validasi")
-        # SESUAIKAN konstruktor dengan dataset.py (Anggota 2).
+       
         train_ds = MidiDataset(train_seqs, block_size=cfg.block_size, stride=cfg.stride)
         val_ds = MidiDataset(val_seqs, block_size=cfg.block_size, stride=cfg.block_size)
         print(f"Jendela: {len(train_ds)} train, {len(val_ds)} validasi")
