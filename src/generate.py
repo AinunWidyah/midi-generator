@@ -9,11 +9,9 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
  
-# ---- ANTARMUKA KE MODUL ANGGOTA LAIN (SESUAIKAN BILA PERLU) -----------------
 from src import tokenizer
 from src.model import MiniGPT, ModelConfig
 from src.tokenizer import BOS_ID, EOS_ID, PAD_ID, ids_to_tokens, tokens_to_ids
-# -----------------------------------------------------------------------------
  
  
 def _get_block_size(model: torch.nn.Module) -> int:
