@@ -1,5 +1,6 @@
 """generate.py — diisi melalui sesi vibe coding (lihat logs/)."""
 
+
 from __future__ import annotations
  
 import argparse
@@ -9,9 +10,20 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
  
-from src import tokenizer
-from src.model import MiniGPT, ModelConfig
-from src.tokenizer import BOS_ID, EOS_ID, PAD_ID, ids_to_tokens, tokens_to_ids
+try:
+    from . import tokenizer
+    from .config import ModelConfig
+    from .dataset import resolve_data_dir as resolve_path
+    from .model import MiniGPT  # SESUAIKAN nama kelas model
+except ImportError:
+    import tokenizer
+    from config import ModelConfig
+    from dataset import resolve_data_dir as resolve_path
+    from model import MiniGPT  # SESUAIKAN nama kelas model
+ 
+PAD_ID = tokenizer.PAD_ID
+EOS_ID = tokenizer.EOS_ID
+BOS_ID = getattr(tokenizer, "BOS_ID", None)
  
  
 def _get_block_size(model: torch.nn.Module) -> int:
@@ -50,7 +62,7 @@ def generate(
       terakhir yang dimasukkan ke model.
     - Berhenti saat menghasilkan EOS_ID atau mencapai max_new_tokens.
     - Mengembalikan prompt + token baru (EOS penutup tidak disertakan).
-    - temperature = 0 berarti greedy; PAD tidak pernah dipilih.
+    - temperature = 0 berarti greedy; PAD (dan BOS) tidak pernah dipilih.
     """
     if not prompt_ids:
         raise ValueError("prompt_ids tidak boleh kosong")
@@ -61,13 +73,15 @@ def generate(
     model.eval()
     device = next(model.parameters()).device
     block_size = _get_block_size(model)
+    banned = [i for i in (PAD_ID, BOS_ID) if i is not None]
     ids = list(prompt_ids)
     try:
         for _ in range(max_new_tokens):
             context = ids[-block_size:]
             x = torch.tensor([context], dtype=torch.long, device=device)  # (1, T)
             logits = model(x)[:, -1, :]  # (1, V): hanya posisi terakhir
-            logits[:, PAD_ID] = float("-inf")
+            for bad_id in banned:
+                logits[:, bad_id] = float("-inf")
             next_id = _sample_next(logits, temperature, top_k)
             if next_id == EOS_ID:
                 break
@@ -77,7 +91,7 @@ def generate(
     return ids
  
  
-def load_model(checkpoint_path: str, device: torch.device):
+def load_model(checkpoint_path: Path, device: torch.device):
     ckpt = torch.load(checkpoint_path, map_location=device)
     model_cfg = ModelConfig(**ckpt["model_config"])
     model = MiniGPT(model_cfg).to(device)
@@ -88,8 +102,8 @@ def load_model(checkpoint_path: str, device: torch.device):
  
 def save_midi(ids: list[int], path: Path) -> None:
     """list[int] -> list[str] -> .mid (token khusus dibuang lebih dulu)."""
-    special = {PAD_ID, BOS_ID, EOS_ID}
-    tokens = ids_to_tokens([i for i in ids if i not in special])
+    special = {i for i in (PAD_ID, EOS_ID, BOS_ID) if i is not None}
+    tokens = tokenizer.ids_to_tokens([i for i in ids if i not in special])
     midi = tokenizer.decode(tokens)  # SESUAIKAN bila decode langsung menulis file
     path.parent.mkdir(parents=True, exist_ok=True)
     midi.write(str(path))
@@ -97,11 +111,13 @@ def save_midi(ids: list[int], path: Path) -> None:
  
 def build_prompt(args: argparse.Namespace) -> list[int]:
     if args.prompt_midi:
-        ids = tokens_to_ids(tokenizer.encode(args.prompt_midi))
+        ids = tokenizer.tokens_to_ids(tokenizer.encode(str(args.prompt_midi)))
         ids = [i for i in ids if i != EOS_ID][: args.prompt_tokens]
         if not ids:
             raise ValueError(f"Prompt kosong dari {args.prompt_midi}")
         return ids
+    if BOS_ID is None:
+        raise ValueError("Tokenizer tidak punya BOS_ID; gunakan --prompt-midi.")
     return [BOS_ID]
  
  
@@ -126,12 +142,12 @@ def main() -> None:
     if args.seed is not None:
         torch.manual_seed(args.seed)
  
-    model, ckpt = load_model(args.checkpoint, device)
-    print(f"Checkpoint epoch {ckpt.get('epoch')} (val_loss {ckpt.get('val_loss'):.4f}) | {device}")
+    model, ckpt = load_model(resolve_path(args.checkpoint), device)
+    print(f"Checkpoint epoch {ckpt.get('epoch')} (nilai {ckpt.get('val_loss'):.4f}) | {device}")
  
     prompt = build_prompt(args)
     top_k = args.top_k if args.top_k > 0 else None
-    out_dir = Path(args.out_dir)
+    out_dir = resolve_path(args.out_dir)
     stamp = time.strftime("%Y%m%d_%H%M%S")
  
     for i in range(args.n_samples):
