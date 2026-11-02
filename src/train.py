@@ -1,5 +1,3 @@
-"""train.py — diisi melalui sesi vibe coding (lihat logs/)."""
-
 
 from __future__ import annotations
  
@@ -23,12 +21,12 @@ try:
     from . import tokenizer
     from .config import ModelConfig, TrainConfig
     from .dataset import create_dataloaders, resolve_data_dir as resolve_path
-    from .model import MiniGPT  # SESUAIKAN nama kelas model
+    from .model import MiniMusicTransformer
 except ImportError:
     import tokenizer
     from config import ModelConfig, TrainConfig
     from dataset import create_dataloaders, resolve_data_dir as resolve_path
-    from model import MiniGPT  # SESUAIKAN nama kelas model
+    from model import MiniMusicTransformer
  
 # Label padding dari dataset.py. Harus sama dengan nilai -100 di MIDIStringDataset.
 IGNORE_INDEX = -100
@@ -306,7 +304,7 @@ def main() -> None:
             f"tokenizer ({vocab_size})."
         )
  
-    model = MiniGPT(model_cfg).to(device)
+    model = MiniMusicTransformer(model_cfg).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Device: {device} | parameter: {n_params / 1e6:.2f} juta | vocab: {vocab_size}")
     print("Hyperparameter:", {k: v for k, v in hp.items()}, "| batch_size:", cfg.batch_size)
