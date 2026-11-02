@@ -3,7 +3,7 @@
 - **Tanggal Sesi:** 02/11/2026
 - **Anggota / Peran:** Ainun Widyah Astanti — Ketua (Prompt Engineer & LLM Navigator) merangkap Anggota 4 (Documentarian & Error Handler)
 - **Target Modul:** Review integrasi seluruh modul + uji end-to-end (`tokenizer.py` → `dataset.py` → `model.py` → `train.py` → `generate.py`)
-- **Tautan Sesi Chat:** [tempel share link chat ini]
+- **Tautan Sesi Chat:** [https://claude.ai/share/6d62c99b-b497-4275-9a3e-38719a5947e8]
 - **Bukti eksekusi:** `notebooks/uji_integrasi_01.ipynb` (Google Colab, Tesla T4, PyTorch 2.11.0+cu130)
 
 ## KRONOLOGI PROMPT & RESPONS
