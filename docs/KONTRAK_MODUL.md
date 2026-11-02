@@ -3,13 +3,14 @@
 Dokumen ini adalah **kesepakatan teknis** yang wajib diikuti semua anggota agar modul yang dibuat terpisah bisa langsung disambung.
 Jika ingin mengubah sesuatu di sini, diskusikan dulu dengan Ketua lalu perbarui dokumen ini **dan** `src/config.py`.
 
-Versi: 1.2 — 21/10/2026
+Versi: 1.3 — 02/11/2026
 
 | Versi | Perubahan |
 |---|---|
 | 1.0 | Kontrak awal |
 | 1.1 | Tambah bagian 5 "Lokasi Data" |
 | 1.2 | Tambah modul `src/preprocessing.py`, file `excluded_midi_report.csv`, format `stats.json`, dan status verifikasi asumsi 1 |
+| 1.3 | Menyesuaikan kontrak dengan implementasi yang lulus uji integrasi #1: ketiga asumsi terverifikasi, keputusan D1–D5 dari `docs/REVIEW_INTEGRASI_01.md` (dataset di-commit, batch berbentuk dict, `create_dataloaders`, tokenisasi saat memuat data, folder `src/preprocessing/`) |
 
 ---
 
@@ -18,7 +19,7 @@ Versi: 1.2 — 21/10/2026
 | Aspek | Keputusan | Catatan |
 |---|---|---|
 | Framework | **PyTorch** | Dijalankan di laptop atau Google Colab (GPU T4) |
-| Dataset utama | **Nottingham** (lagu folk, melodi + akor) | Cadangan: **JSB Chorales** (Bach). Asumsi format token di bawah wajib dicek Anggota 2 setelah dataset diunduh |
+| Dataset utama | **Nottingham**, folder `MIDI/melody` (1.034 lagu folk, melodi saja) | Di-commit ke repo di `data/raw/nottingham/` (±4,4 MB). Cadangan: **JSB Chorales** (Bach) |
 | Library I/O MIDI | **`pretty_midi`** | Hanya untuk membaca & menulis file `.mid`. Tokenizer, vocab, dan augmentasi **ditulis sendiri** |
 | Dilarang | Model pretrained, `nn.MultiheadAttention`/`nn.Transformer` bawaan, library tokenizer musik siap pakai (mis. `miditok`) | Agar memenuhi syarat "from scratch" |
 | Arsitektur | Mini-Transformer **decoder-only** (gaya GPT / Music Transformer) | |
@@ -30,25 +31,25 @@ Asumsi yang harus diverifikasi setelah dataset tersedia (tanggung jawab Anggota 
 | No | Asumsi | Batas aman | Status |
 |---|---|---|---|
 | 1 | Setiap lagu memiliki track melodi tunggal (monofonik) | file non-monofonik < 5% | ✅ **Terverifikasi** 21/10/2026: 22 dari 1.034 file (2,1%) dikecualikan; 1.012 file dipakai (lihat `logs/04_keputusan_ketua.md`) |
-| 2 | Sebagian besar durasi nada berada di rentang not 1/16 sampai not penuh (1–16) | nada terpotong (> 16) < 5% | ⏳ Menunggu `tokenizer.py` |
-| 3 | Panjang lagu dalam token cocok dengan `block_size = 256` | (informasi) | ⏳ Menunggu `tokenizer.py` |
+| 2 | Sebagian besar durasi nada berada di rentang not 1/16 sampai not penuh (1–16) | nada terpotong (> 16) < 5% | ✅ **Terverifikasi** 02/11/2026: `DUR_16` hanya 0,15% (290 dari 193.940 token durasi) → `MAX_DURATION` tetap 16 |
+| 3 | Panjang lagu dalam token cocok dengan `block_size = 256` | (informasi) | ✅ **Terverifikasi** 02/11/2026: median 328 token/lagu, 74,6% lagu > 256 token dan dipotong per jendela → `block_size` tetap 256 |
 
-Jika ada asumsi yang meleset, kontrak dinaikkan ke versi berikutnya dan perubahannya dicatat di log.
+Semua asumsi terverifikasi (lihat `logs/04_keputusan_ketua.md` dan `logs/05_uji_integrasi.md`). Format token v1 dipakai tanpa perubahan.
 
 ---
 
 ## 1. Alur Data
 
 ```
-data/raw/*.mid ──preprocessing.py (filter + tokenizer.encode)──▶ data/processed/tokens.json
+data/raw/nottingham/*.mid
+        │  dataset.create_dataloaders: split 90/10 per lagu
+        ▼
+tokenizer.encode ──▶ list[str] ──tokens_to_ids──▶ list[int]
+        (file non-monofonik ditolak dengan ValueError → dilewati)
                                                            │
-                                     tokens_to_ids  ◀──────┘
-                                           ▼
-                                       list[int]
-                                                           │
-                                                 dataset.py (potong jendela)
+                                                 dataset.py (potong jendela T+1)
                                                            ▼
-                                        x, y : LongTensor (B, T)
+                     batch dict: input_ids, labels, attention_mask : LongTensor (B, T)
                                                            │
                                                       model.py
                                                            ▼
@@ -115,57 +116,44 @@ Urutan ID dibuat oleh `build_vocab()` di `src/config.py` dan **tidak boleh diuba
 ### `src/tokenizer.py` — Anggota 2
 | Fungsi | Input | Output |
 |---|---|---|
-| `encode(midi_path: str) -> list[str]` | path file `.mid` | daftar token string (dengan `<BOS>`/`<EOS>`) |
-| `decode(tokens: list[str], out_path: str, tempo: float = 120.0) -> None` | daftar token | menulis file `.mid` |
+| `encode(midi_path: str) -> list[str]` | path file `.mid` | daftar token string (dengan `<BOS>`/`<EOS>`). Memilih track monofonik bernada dengan nada terbanyak; jika tidak ada → `ValueError` |
+| `decode(tokens: list[str], out_path: str, tempo: float = 120.0) -> None` | daftar token | menulis file `.mid` (tidak mengembalikan objek) |
 | `tokens_to_ids(tokens: list[str]) -> list[int]` | token string | ID integer |
 | `ids_to_tokens(ids: list[int]) -> list[str]` | ID integer | token string |
-| `transpose(tokens: list[str], semitones: int) -> list[str]` | token + geseran | token tergeser (augmentasi) |
+| `transpose(tokens: list[str], semitones: int) -> list[str]` | token + geseran | token tergeser (augmentasi), pitch dijepit 0–127 |
 
-Wajib ada **uji round-trip**: `decode(encode(f))` harus terdengar sama dengan `f`.
-Token yang tidak valid saat `decode` (misal dua `DUR` berturut-turut) dilewati, bukan menyebabkan crash.
+- Vocabulary **wajib** diambil dari `config.TOKEN_TO_ID` (lihat Bug B1 di `docs/REVIEW_INTEGRASI_01.md`).
+- Konversi detik → not 1/16 memperhitungkan perubahan tempo.
+- Uji round-trip `encode(decode(encode(f))) == encode(f)`: **lulus 18/18** lagu monofonik (uji integrasi #1).
+- Token yang tidak valid saat `decode` (misal dua `DUR` berturut-turut) dilewati, bukan menyebabkan crash.
 
-### `src/preprocessing.py` — Anggota 2
-Skrip yang dijalankan **sekali** (dan bisa diulang kapan saja) untuk mengubah data mentah menjadi data siap pakai.
+### `src/preprocessing/` — Anggota 2
+Skrip audit dataset yang dijalankan **manual**, bukan bagian dari alur training.
 
-- Cara menjalankan (dari folder utama): `python src/preprocessing.py` (opsional `--dataset jsb_chorales`).
-- Input: semua `*.mid` di `cfg.raw_dir`, **diurutkan berdasarkan nama** agar hasil selalu sama.
-- **Tidak boleh memindahkan, menghapus, atau mengubah** file di `raw/`. File yang dikecualikan cukup dicatat.
-- Langkah wajib, berurutan:
-  1. **Filter monofonik**: logika dari `filter_midi_monophonic.py` dipindahkan ke sini. File yang tidak lolos dicatat ke `cfg.excluded_path` beserta alasannya. Kriteria persis "tidak monofonik" ditulis di docstring.
-  2. **Tokenisasi**: `tokenizer.encode` untuk setiap file yang lolos, lalu simpan ke `cfg.tokens_path`.
-  3. **Split 90/10 per lagu**: acak memakai `random.Random(cfg.seed)` dengan rasio `cfg.val_ratio`, lalu simpan ke `cfg.split_path`.
-  4. **Statistik & cek asumsi 2–3**: simpan ke `cfg.stats_path` dengan format di bawah.
-  5. Cetak ringkasan ke layar (jumlah file, dikecualikan, gagal, train/val, dan hasil cek asumsi).
-- File yang gagal dibaca **tidak menghentikan** skrip: dicatat di `excluded_midi_report.csv` dengan alasan `gagal_dibaca`.
+| File | Fungsi |
+|---|---|
+| `audit_midi.py` | Menghitung statistik per file & per track: monofonik/tidak, persentase durasi 1–16, estimasi jumlah token |
+| `filter_midi_monophonic.py` | Mendata file non-monofonik ke laporan CSV |
 
-Format `stats.json` (kunci wajib):
-```json
-{
-  "dataset": "nottingham",
-  "total_files": 1034,
-  "excluded": {"non_monophonic": 22, "gagal_dibaca": 0},
-  "kept": 1012,
-  "pct_non_monophonic": 2.13,
-  "total_notes": 0,
-  "pct_duration_clipped": 0.0,
-  "duration_histogram": {"1": 0, "2": 0, "...": 0, "16": 0, ">16": 0},
-  "tokens_per_song": {"min": 0, "mean": 0.0, "median": 0, "max": 0},
-  "pitch_range": {"min": 0, "max": 0},
-  "split": {"train": 0, "val": 0}
-}
-```
-(Angka 0 di atas hanya contoh format; nilai asli diisi oleh skrip.)
-
-Format `excluded_midi_report.csv`: kolom `file,alasan,detail`, contoh `abc_12.mid,non_monophonic,overlap pada 14 nada`.
+- **Tidak boleh memindahkan, menghapus, atau mengubah** file di `data/raw/` (temuan K2: `shutil.move` harus diganti menjadi laporan saja).
+- Penyaringan file non-monofonik saat training dilakukan **otomatis** oleh `tokenizer.encode` (melempar `ValueError`) dan `dataset.py` (melewati file tersebut). Hasil: 22 dari 1.034 file dilewati.
+- `tokens.json` / `split.json` / `stats.json` **tidak wajib** (keputusan D3): dataset cukup kecil untuk ditokenisasi saat dimuat.
 
 ### `src/dataset.py` — Anggota 2
-- Kelas `MidiDataset(torch.utils.data.Dataset)`.
-- `__getitem__` mengembalikan tuple `(x, y)`:
-  - `x`: `LongTensor` shape `(T,)` → token posisi `i … i+T-1`
-  - `y`: `LongTensor` shape `(T,)` → token posisi `i+1 … i+T` (digeser satu)
-- Sekuens yang lebih pendek dari `T+1` di-pad dengan `PAD_ID` di kanan.
-- Fungsi `get_dataloaders(cfg) -> (train_loader, val_loader)` dengan pembagian **90/10 per lagu** (bukan per potongan, agar tidak bocor).
-- Output DataLoader: `x, y` shape `(B, T)`, dtype `torch.long`.
+- Fungsi utama: `create_dataloaders(config: TrainConfig, model_config: ModelConfig) -> (train_loader, val_loader)` (keputusan D1).
+- Membaca semua `*.mid` di bawah `config.data_dir` secara rekursif, **melewati** folder `_excluded_non_monophonic`.
+- Pembagian **90/10 per lagu sebelum dipotong** (`config.val_ratio`, `config.seed`), agar lagu yang sama tidak muncul di train dan val.
+- Kelas `MIDIStringDataset`: setiap lagu dipotong menjadi jendela `block_size + 1` token.
+- Setiap item / batch berupa **dict** (keputusan D2):
+
+| Kunci | Shape (batch) | Isi |
+|---|---|---|
+| `input_ids` | `(B, T)` long | token posisi `i … i+T-1`, pad kanan dengan `PAD_ID` |
+| `labels` | `(B, T)` long | token posisi `i+1 … i+T` (digeser satu), pad kanan dengan **`-100`** |
+| `attention_mask` | `(B, T)` long | 1 = token asli, 0 = padding (tidak dipakai model, karena causal + pad kanan) |
+
+- **Augmentasi transposisi** acak `−config.transpose_range … +config.transpose_range` semiton, **khusus train** (temuan K1 — ⏳ belum diimplementasikan).
+- Hasil uji integrasi #1: 931/103 lagu → 1.819/211 chunk; batch `(32, 256)`.
 
 ### `src/model.py` — Ketua
 - Kelas `MiniMusicTransformer(nn.Module)`, dibuat dengan `MiniMusicTransformer(ModelConfig)`.
@@ -175,25 +163,31 @@ Format `excluded_midi_report.csv`: kolom `file,alasan,detail`, contoh `abc_12.mi
 - Attention memakai **causal mask** (token tidak boleh melihat token setelahnya).
 
 ### `src/train.py` — Anggota 3
-- Loss: `cross_entropy(logits.reshape(-1, V), y.reshape(-1), ignore_index=PAD_ID)`, dengan opsi `label_smoothing`. Gunakan `.reshape`, **bukan** `.view`, karena `y` hasil slicing (`data[:, 1:]`) tidak contiguous di memori (lihat log 03, Eror 2.1).
-- Dicatat per epoch: `train_loss`, `val_loss`, `val_perplexity = exp(val_loss)`, `val_accuracy` (tanpa PAD).
-- Riwayat metrik disimpan ke `outputs/metrics.csv`; grafik ke `outputs/loss_curve.png`.
-- Format checkpoint (`outputs/checkpoints/*.pt`):
+- Loss: `cross_entropy(logits.reshape(-1, V), labels.reshape(-1), ignore_index=-100, label_smoothing=...)`. Gunakan `.reshape`, **bukan** `.view` (lihat log 03, Eror 2.1).
+- Optimizer AdamW (weight decay hanya untuk parameter ≥ 2D), warmup linear + cosine decay, gradient clipping, opsi early stopping.
+- Dicatat per epoch: `train_loss`, `val_loss`, `val_perplexity = exp(val_loss)`, `val_accuracy` (tanpa padding), `lr`, `seconds`.
+- Output (dengan `--run-name NAMA`, akhiran `_NAMA` ditambahkan):
+  - `outputs/metrics_NAMA.csv`, `outputs/loss_curve_NAMA.png`
+  - `outputs/checkpoints/best_NAMA.pt` (val_loss terendah) dan `last_NAMA.pt`
+- Format checkpoint:
   ```python
   {
       "model_state": model.state_dict(),
       "model_config": asdict(model_cfg),
-      "train_config": asdict(train_cfg),
+      "train_config": {...},   # TrainConfig + hyperparameter + run_name
       "epoch": epoch,
       "val_loss": val_loss,
   }
   ```
+- Cara menjalankan: `python src/train.py --epochs 30 --run-name NAMA` (opsi lain: `--lr`, `--batch-size`, `--warmup-steps`, `--label-smoothing`, `--patience`, `--smoke`).
+- File `*.pt` **tidak di-commit** (±17 MB per file, diabaikan `.gitignore`).
 
 ### `src/generate.py` — Anggota 3
 - `generate(model, prompt_ids: list[int], max_new_tokens: int, temperature: float = 1.0, top_k: int | None = None) -> list[int]`.
 - Jika sekuens lebih panjang dari `block_size`, hanya `block_size` token terakhir yang dimasukkan ke model.
-- Berhenti saat menghasilkan `EOS_ID` atau mencapai `max_new_tokens`.
-- Hasil disimpan ke `outputs/generated/*.mid` lewat `tokenizer.decode`.
+- Berhenti saat menghasilkan `EOS_ID` atau mencapai `max_new_tokens`; `PAD` dan `BOS` tidak pernah dipilih; `temperature = 0` berarti greedy.
+- Hasil disimpan ke `outputs/generated/*.mid` lewat `tokenizer.decode(tokens, out_path)` (lihat Bug B3).
+- Cara menjalankan: `python src/generate.py --checkpoint outputs/checkpoints/best_NAMA.pt --n-samples 3 --temperature 0.95 --top-k 40` (opsional `--prompt-midi FILE` untuk melanjutkan lagu yang ada).
 
 ---
 
@@ -201,21 +195,19 @@ Format `excluded_midi_report.csv`: kolom `file,alasan,detail`, contoh `abc_12.mi
 
 ```
 data/
-├── README.md                     # sumber dataset & cara mengunduh (satu-satunya file data yang di-commit)
-├── raw/<dataset_name>/           # file .mid ASLI — tidak boleh diubah
-└── processed/<dataset_name>/     # hasil preprocessing — boleh dihapus & dibuat ulang
-    ├── tokens.json               # {"nama_lagu.mid": ["<BOS>", "NOTE_67", "DUR_4", ..., "<EOS>"], ...}
-    ├── split.json                # {"train": ["a.mid", ...], "val": ["b.mid", ...]}
-    ├── stats.json                # hasil cek asumsi (format di bagian 4, preprocessing.py)
-    └── excluded_midi_report.csv  # daftar file yang dikecualikan + alasannya
+├── raw/nottingham/              # 1.034 file .mid ASLI (di-commit, keputusan D4) — tidak boleh diubah
+└── _excluded_non_monophonic/    # salinan 22 file non-monofonik — DIHAPUS dari repo (keputusan D5)
+outputs/                         # dibuat otomatis oleh train.py & generate.py
+├── metrics_<run>.csv
+├── loss_curve_<run>.png
+├── checkpoints/best_<run>.pt    # tidak di-commit
+└── generated/*.mid
 ```
 
-- `<dataset_name>` mengikuti `TrainConfig.dataset_name` (`nottingham` atau `jsb_chorales`).
-- Path **tidak boleh ditulis manual**; gunakan properti di `TrainConfig`: `raw_dir`, `processed_dir`, `tokens_path`, `split_path`, `stats_path`, `excluded_path`.
-- Semua isi `processed/` dibuat oleh `python src/preprocessing.py`; tidak ada file yang dibuat atau diedit dengan tangan.
-- Isi `data/` (kecuali `README.md` dan `.gitkeep`) **tidak di-commit** karena diabaikan `.gitignore`. Anggota lain mengambil dataset dari sumber di `data/README.md` atau dari folder Google Drive kelompok.
-- `tokens.json` disimpan sebagai token **string** (bukan ID) agar mudah dibaca & diperiksa manual; konversi ke ID dilakukan di `dataset.py` lewat `tokens_to_ids`.
-- Augmentasi transposisi dilakukan **saat training** di `dataset.py`, tidak disimpan ke `processed/`.
+- Dataset **di-commit** ke repo (keputusan D4): ukurannya kecil (±4,4 MB) dan Colab cukup `git clone` untuk mendapatkan data.
+- File non-monofonik **tidak perlu dipisahkan**; tokenizer menolak dan dataset melewatinya secara otomatis.
+- Path relatif terhadap folder utama proyek di-resolve oleh `dataset.resolve_data_dir`, sehingga skrip bisa dijalankan dari mana saja di Windows maupun Colab.
+- Properti path di `TrainConfig` (`raw_dir`, `processed_dir`, dll.) tetap tersedia untuk skrip tambahan.
 
 ---
 
