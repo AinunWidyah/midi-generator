@@ -173,7 +173,7 @@ class MIDIStringDataset(Dataset):
             if shift != 0:
                 tokens = tokenizer.ids_to_tokens(chunk)
                 tokens = tokenizer.transpose(tokens, shift)
-                chunk = tokenizer.tokens_to_ids(tokens)chunk = self.examples[index]
+                chunk = tokenizer.tokens_to_ids(tokens)
 
         # Teacher forcing: prediksi token berikutnya.
         input_ids = chunk[:-1]
@@ -231,6 +231,7 @@ def create_dataloaders(
         train_files,
         block_size=model_config.block_size,
         augment=True,
+        max_shift=config.transpose_range,
     )
 
     val_dataset = MIDIStringDataset(
