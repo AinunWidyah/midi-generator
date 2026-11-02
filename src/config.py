@@ -2,12 +2,13 @@
 
 Semua modul mengimpor nilai dari file ini. Lihat docs/KONTRAK_MODUL.md.
 
-Keputusan dasar (Kontrak v1.0):
+Keputusan dasar (Kontrak v1.2):
     Framework       : PyTorch
     Dataset         : Nottingham (cadangan: JSB Chorales)
     Library I/O MIDI: pretty_midi (hanya baca/tulis .mid; tokenizer ditulis sendiri)
 """
 from dataclasses import dataclass
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Token khusus & vocabulary
@@ -68,6 +69,34 @@ class TrainConfig:
     transpose_range: int = 5  # augmentasi: geser -5..+5 semiton
     seed: int = 42
 
+    # ---- Lokasi data (lihat docs/KONTRAK_MODUL.md bagian "Lokasi Data") ----
+    @property
+    def raw_dir(self) -> Path:
+        """Folder file .mid asli, contoh: data/raw/nottingham/"""
+        return Path(self.data_dir) / "raw" / self.dataset_name
+
+    @property
+    def processed_dir(self) -> Path:
+        """Folder hasil preprocessing, contoh: data/processed/nottingham/"""
+        return Path(self.data_dir) / "processed" / self.dataset_name
+
+    @property
+    def tokens_path(self) -> Path:
+        return self.processed_dir / "tokens.json"
+
+    @property
+    def split_path(self) -> Path:
+        return self.processed_dir / "split.json"
+
+    @property
+    def stats_path(self) -> Path:
+        return self.processed_dir / "stats.json"
+
+    @property
+    def excluded_path(self) -> Path:
+        """Daftar file yang dikecualikan preprocessing.py beserta alasannya."""
+        return self.processed_dir / "excluded_midi_report.csv"
+
 
 if __name__ == "__main__":
     print(f"VOCAB_SIZE = {VOCAB_SIZE}")
@@ -75,4 +104,7 @@ if __name__ == "__main__":
     print(f"NOTE_60 -> {TOKEN_TO_ID['NOTE_60']}, REST -> {TOKEN_TO_ID[REST_TOKEN]}, "
           f"DUR_1 -> {TOKEN_TO_ID['DUR_1']}, DUR_16 -> {TOKEN_TO_ID['DUR_16']}")
     print(ModelConfig())
-    print(TrainConfig())
+    tc = TrainConfig()
+    print(tc)
+    print(f"raw_dir       = {tc.raw_dir}")
+    print(f"processed_dir = {tc.processed_dir}")

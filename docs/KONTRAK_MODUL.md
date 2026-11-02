@@ -3,7 +3,13 @@
 Dokumen ini adalah **kesepakatan teknis** yang wajib diikuti semua anggota agar modul yang dibuat terpisah bisa langsung disambung.
 Jika ingin mengubah sesuatu di sini, diskusikan dulu dengan Ketua lalu perbarui dokumen ini **dan** `src/config.py`.
 
-Versi: 1.0 — 21/10/2026
+Versi: 1.2 — 21/10/2026
+
+| Versi | Perubahan |
+|---|---|
+| 1.0 | Kontrak awal |
+| 1.1 | Tambah bagian 5 "Lokasi Data" |
+| 1.2 | Tambah modul `src/preprocessing.py`, file `excluded_midi_report.csv`, format `stats.json`, dan status verifikasi asumsi 1 |
 
 ---
 
@@ -20,18 +26,25 @@ Versi: 1.0 — 21/10/2026
 | Library lain | `numpy`, `matplotlib`, `tqdm` | Lihat `requirements.txt` |
 
 Asumsi yang harus diverifikasi setelah dataset tersedia (tanggung jawab Anggota 2, hasilnya dilaporkan ke Ketua):
-1. Setiap lagu memiliki track melodi tunggal (monofonik).
-2. Sebagian besar durasi nada berada di rentang not 1/16 sampai not penuh (1–16).
-3. Panjang lagu dalam token cocok dengan `block_size = 256`.
 
-Jika ada asumsi yang meleset, kontrak dinaikkan ke versi 1.1 dan perubahannya dicatat di log.
+| No | Asumsi | Batas aman | Status |
+|---|---|---|---|
+| 1 | Setiap lagu memiliki track melodi tunggal (monofonik) | file non-monofonik < 5% | ✅ **Terverifikasi** 21/10/2026: 22 dari 1.034 file (2,1%) dikecualikan; 1.012 file dipakai (lihat `logs/04_keputusan_ketua.md`) |
+| 2 | Sebagian besar durasi nada berada di rentang not 1/16 sampai not penuh (1–16) | nada terpotong (> 16) < 5% | ⏳ Menunggu `tokenizer.py` |
+| 3 | Panjang lagu dalam token cocok dengan `block_size = 256` | (informasi) | ⏳ Menunggu `tokenizer.py` |
+
+Jika ada asumsi yang meleset, kontrak dinaikkan ke versi berikutnya dan perubahannya dicatat di log.
 
 ---
 
 ## 1. Alur Data
 
 ```
-.mid ──tokenizer.encode──▶ list[str] ──tokens_to_ids──▶ list[int]
+data/raw/*.mid ──preprocessing.py (filter + tokenizer.encode)──▶ data/processed/tokens.json
+                                                           │
+                                     tokens_to_ids  ◀──────┘
+                                           ▼
+                                       list[int]
                                                            │
                                                  dataset.py (potong jendela)
                                                            ▼
@@ -111,6 +124,40 @@ Urutan ID dibuat oleh `build_vocab()` di `src/config.py` dan **tidak boleh diuba
 Wajib ada **uji round-trip**: `decode(encode(f))` harus terdengar sama dengan `f`.
 Token yang tidak valid saat `decode` (misal dua `DUR` berturut-turut) dilewati, bukan menyebabkan crash.
 
+### `src/preprocessing.py` — Anggota 2
+Skrip yang dijalankan **sekali** (dan bisa diulang kapan saja) untuk mengubah data mentah menjadi data siap pakai.
+
+- Cara menjalankan (dari folder utama): `python src/preprocessing.py` (opsional `--dataset jsb_chorales`).
+- Input: semua `*.mid` di `cfg.raw_dir`, **diurutkan berdasarkan nama** agar hasil selalu sama.
+- **Tidak boleh memindahkan, menghapus, atau mengubah** file di `raw/`. File yang dikecualikan cukup dicatat.
+- Langkah wajib, berurutan:
+  1. **Filter monofonik**: logika dari `filter_midi_monophonic.py` dipindahkan ke sini. File yang tidak lolos dicatat ke `cfg.excluded_path` beserta alasannya. Kriteria persis "tidak monofonik" ditulis di docstring.
+  2. **Tokenisasi**: `tokenizer.encode` untuk setiap file yang lolos, lalu simpan ke `cfg.tokens_path`.
+  3. **Split 90/10 per lagu**: acak memakai `random.Random(cfg.seed)` dengan rasio `cfg.val_ratio`, lalu simpan ke `cfg.split_path`.
+  4. **Statistik & cek asumsi 2–3**: simpan ke `cfg.stats_path` dengan format di bawah.
+  5. Cetak ringkasan ke layar (jumlah file, dikecualikan, gagal, train/val, dan hasil cek asumsi).
+- File yang gagal dibaca **tidak menghentikan** skrip: dicatat di `excluded_midi_report.csv` dengan alasan `gagal_dibaca`.
+
+Format `stats.json` (kunci wajib):
+```json
+{
+  "dataset": "nottingham",
+  "total_files": 1034,
+  "excluded": {"non_monophonic": 22, "gagal_dibaca": 0},
+  "kept": 1012,
+  "pct_non_monophonic": 2.13,
+  "total_notes": 0,
+  "pct_duration_clipped": 0.0,
+  "duration_histogram": {"1": 0, "2": 0, "...": 0, "16": 0, ">16": 0},
+  "tokens_per_song": {"min": 0, "mean": 0.0, "median": 0, "max": 0},
+  "pitch_range": {"min": 0, "max": 0},
+  "split": {"train": 0, "val": 0}
+}
+```
+(Angka 0 di atas hanya contoh format; nilai asli diisi oleh skrip.)
+
+Format `excluded_midi_report.csv`: kolom `file,alasan,detail`, contoh `abc_12.mid,non_monophonic,overlap pada 14 nada`.
+
 ### `src/dataset.py` — Anggota 2
 - Kelas `MidiDataset(torch.utils.data.Dataset)`.
 - `__getitem__` mengembalikan tuple `(x, y)`:
@@ -150,7 +197,29 @@ Token yang tidak valid saat `decode` (misal dua `DUR` berturut-turut) dilewati, 
 
 ---
 
-## 5. Konvensi Kode
+## 5. Lokasi Data
+
+```
+data/
+├── README.md                     # sumber dataset & cara mengunduh (satu-satunya file data yang di-commit)
+├── raw/<dataset_name>/           # file .mid ASLI — tidak boleh diubah
+└── processed/<dataset_name>/     # hasil preprocessing — boleh dihapus & dibuat ulang
+    ├── tokens.json               # {"nama_lagu.mid": ["<BOS>", "NOTE_67", "DUR_4", ..., "<EOS>"], ...}
+    ├── split.json                # {"train": ["a.mid", ...], "val": ["b.mid", ...]}
+    ├── stats.json                # hasil cek asumsi (format di bagian 4, preprocessing.py)
+    └── excluded_midi_report.csv  # daftar file yang dikecualikan + alasannya
+```
+
+- `<dataset_name>` mengikuti `TrainConfig.dataset_name` (`nottingham` atau `jsb_chorales`).
+- Path **tidak boleh ditulis manual**; gunakan properti di `TrainConfig`: `raw_dir`, `processed_dir`, `tokens_path`, `split_path`, `stats_path`, `excluded_path`.
+- Semua isi `processed/` dibuat oleh `python src/preprocessing.py`; tidak ada file yang dibuat atau diedit dengan tangan.
+- Isi `data/` (kecuali `README.md` dan `.gitkeep`) **tidak di-commit** karena diabaikan `.gitignore`. Anggota lain mengambil dataset dari sumber di `data/README.md` atau dari folder Google Drive kelompok.
+- `tokens.json` disimpan sebagai token **string** (bukan ID) agar mudah dibaca & diperiksa manual; konversi ke ID dilakukan di `dataset.py` lewat `tokens_to_ids`.
+- Augmentasi transposisi dilakukan **saat training** di `dataset.py`, tidak disimpan ke `processed/`.
+
+---
+
+## 6. Konvensi Kode
 
 - Setiap fungsi punya docstring singkat dan komentar shape tensor, contoh `# (B, T, C)`.
 - Seed acak diatur lewat `TrainConfig.seed` agar eksperimen bisa diulang.
