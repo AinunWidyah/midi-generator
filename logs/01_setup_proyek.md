@@ -3,7 +3,7 @@
 - **Tanggal Sesi:** 21/10/2026
 - **Anggota / Peran:** Ainun Widyah Astanti — Prompt Engineer & LLM Navigator (Ketua)
 - **Target Modul:** Perencanaan proyek, pembagian jobdesk, setup repository GitHub, dan kontrak antar-modul
-- **Tautan Sesi Chat:** [tempel share link chat ini]
+- **Tautan Sesi Chat:** [https://claude.ai/share/6d62c99b-b497-4275-9a3e-38719a5947e8]
 
 ## KRONOLOGI PROMPT & RESPONS
 
