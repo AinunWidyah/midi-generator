@@ -1,5 +1,3 @@
-"""generate.py — diisi melalui sesi vibe coding (lihat logs/)."""
-
 
 from __future__ import annotations
  
@@ -14,12 +12,12 @@ try:
     from . import tokenizer
     from .config import ModelConfig
     from .dataset import resolve_data_dir as resolve_path
-    from .model import MiniGPT  # SESUAIKAN nama kelas model
+    from .model import MiniMusicTransformer
 except ImportError:
     import tokenizer
     from config import ModelConfig
     from dataset import resolve_data_dir as resolve_path
-    from model import MiniGPT  # SESUAIKAN nama kelas model
+    from model import MiniMusicTransformer
  
 PAD_ID = tokenizer.PAD_ID
 EOS_ID = tokenizer.EOS_ID
@@ -94,7 +92,7 @@ def generate(
 def load_model(checkpoint_path: Path, device: torch.device):
     ckpt = torch.load(checkpoint_path, map_location=device)
     model_cfg = ModelConfig(**ckpt["model_config"])
-    model = MiniGPT(model_cfg).to(device)
+    model = MiniMusicTransformer(model_cfg).to(device)
     model.load_state_dict(ckpt["model_state"])
     model.eval()
     return model, ckpt
@@ -104,9 +102,8 @@ def save_midi(ids: list[int], path: Path) -> None:
     """list[int] -> list[str] -> .mid (token khusus dibuang lebih dulu)."""
     special = {i for i in (PAD_ID, EOS_ID, BOS_ID) if i is not None}
     tokens = tokenizer.ids_to_tokens([i for i in ids if i not in special])
-    midi = tokenizer.decode(tokens)  # SESUAIKAN bila decode langsung menulis file
     path.parent.mkdir(parents=True, exist_ok=True)
-    midi.write(str(path))
+    tokenizer.decode(tokens, str(path))  # kontrak: decode(tokens, out_path) -> None
  
  
 def build_prompt(args: argparse.Namespace) -> list[int]:
