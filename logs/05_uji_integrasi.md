@@ -88,3 +88,32 @@ epoch  train_loss  val_loss  val_perplexity  val_accuracy       lr  seconds
 - **Durasi sampel 2 hampir dua kali sampel 1** dengan jumlah nada sama → model epoch 2 masih sering menghasilkan jeda/durasi panjang. Dipakai sebagai pembanding "awal training" saat presentasi.
 - **Outlier:** satu lagu sepanjang 5.452 token (±14× median).
 - **Peringatan berulang** `RuntimeWarning: Gagal memproses ... non-monofonik` (22 baris) saat membuat dataset — tidak berbahaya, tetapi bisa dirapikan (temuan K2).
+
+---
+
+### 6. UJI ULANG SETELAH AUGMENTASI TRANSPOSISI (K1) & BASELINE
+
+- **Commit yang diuji:** `14957e9` (merge PR #6, 02/11 15:31), mencakup PR #4 & #5 (augmentasi transposisi, Laratha) dan PR #6 (`baseline.py`, Nur Aisya).
+- **Catatan proses:** PR #4 berisi `SyntaxError` (`chunk = tokenizer.tokens_to_ids(tokens)chunk = self.examples[index]`) dan sempat di-merge oleh pembuatnya sendiri sebelum direview, sehingga `main` rusak ±20 menit (14:53–15:12) sampai PR #5 memperbaikinya. Tindak lanjut: PR hanya di-merge Ketua setelah review; disarankan mengaktifkan proteksi branch `main`.
+
+| Cek | Sebelum K1 | Sesudah K1 | Keterangan |
+|---|---|---|---|
+| Rentang ID batch train | 0–147 | **0–147** ✅ | Transposisi tidak menghasilkan token di luar vocab |
+| val_loss epoch 2 | 1,716 | 1,806 | Sedikit naik: data train kini bervariasi (transposisi acak), tugas jadi lebih sulit dalam jangka pendek. Manfaat augmentasi (mengurangi overfitting) baru terlihat pada training panjang |
+| val_accuracy epoch 2 | 45,3% | 44,5% | idem |
+| Generate | ✅ | ✅ | 2 sampel × 512 token |
+
+**Baseline tanpa belajar (`src/baseline.py`, data validasi, 40.536 token target):**
+
+| Baseline | Akurasi |
+|---|---|
+| A — selalu token paling umum (`DUR_2`) | 33,4% |
+| **B — paling umum menurut tipe token sebelumnya** | **40,7%** |
+| C — bigram (paling umum setelah token sebelumnya) | 37,5% |
+| Model, epoch 2 | 44,5% |
+
+- Token durasi = 49,9% dari target; `DUR_2` = 67,0% dari token durasi (konsisten dengan Tahap 2).
+- **Analisis:** setelah 2 epoch, model baru ±4 poin di atas baseline terbaik (B). Training penuh dinilai berhasil jika `val_accuracy` **jelas melampaui 40,7%**; target ini dipakai di laporan.
+- **Catatan metodologi:** statistik baseline diambil dari `train_loader` yang kini memakai augmentasi acak, sehingga bigram (C) menjadi "kabur" dan justru lebih rendah dari B. Disarankan baseline memakai data train **tanpa** augmentasi agar adil (`MIDIStringDataset(..., augment=False)`).
+
+**Keputusan Ketua:** alur tetap berjalan setelah K1 → Anggota 3 dipersilakan memulai training penuh (30 epoch) dan eksperimen tuning.
