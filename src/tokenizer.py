@@ -15,21 +15,12 @@ import pretty_midi
 
 try:
     # Import saat dipakai sebagai package: from src import tokenizer
-    from .config import build_vocab
+    from .config import TOKEN_TO_ID
 except ImportError:
-    # Import saat script dijalankan dari folder src.
-    from config import build_vocab
+    # Import saat script dijalankan langsung dari folder src.
+    from config import TOKEN_TO_ID
 
-
-# Jangan membuat ulang urutan ID di sini; gunakan vocab dari config.py.
-VOCAB = build_vocab()
-
-if not isinstance(VOCAB, dict):
-    raise TypeError(
-        "build_vocab() harus mengembalikan dict dengan format {token: id}."
-    )
-
-TOKEN_TO_ID: dict[str, int] = VOCAB
+# Mapping token -> ID diambil dari config.py, bukan dibuat ulang di sini.
 ID_TO_TOKEN: dict[int, str] = {idx: token for token, idx in TOKEN_TO_ID.items()}
 
 # Ambil ID token khusus dari config.py, bukan menetapkan angka baru.
