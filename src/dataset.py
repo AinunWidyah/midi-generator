@@ -134,8 +134,12 @@ class MIDIStringDataset(Dataset):
         self,
         midi_files: list[Path],
         block_size: int = 256,
+        augment: bool = False,
+        max_shift: int = 5,
     ):
         self.block_size = block_size
+        self.augment = augment
+        self.max_shift = max_shift
         self.examples: list[list[int]] = []
         self.skipped_files: list[tuple[str, str]] = []
 
@@ -162,6 +166,14 @@ class MIDIStringDataset(Dataset):
 
     def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
         chunk = self.examples[index]
+
+        # Augmentasi transposisi: hanya aktif untuk data train.
+        if self.augment:
+            shift = random.randint(-self.max_shift, self.max_shift)
+            if shift != 0:
+                tokens = tokenizer.ids_to_tokens(chunk)
+                tokens = tokenizer.transpose(tokens, shift)
+                chunk = tokenizer.tokens_to_ids(tokens)chunk = self.examples[index]
 
         # Teacher forcing: prediksi token berikutnya.
         input_ids = chunk[:-1]
@@ -218,6 +230,7 @@ def create_dataloaders(
     train_dataset = MIDIStringDataset(
         train_files,
         block_size=model_config.block_size,
+        augment=True,
     )
 
     val_dataset = MIDIStringDataset(
